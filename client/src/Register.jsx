@@ -1,11 +1,21 @@
-import { useState } from "react";
+import { useState, useContext } from "react";
+import { UserContext } from "./UserContext";
+import axios from "axios";
 
 export const Register = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const { setUsername: setLoggedInUsername, setId } = useContext(UserContext);
+  async function register(ev) {
+    ev.preventDefault(); // Ensures the data is sent to the correct route
+    // Send user data to the register route
+    const { data } = await axios.post("/register", { username, password });
+    setLoggedInUsername(username);
+    setId(data.id);
+  }
   return (
     <div className="bg-blue-50 h-screen flex items-center">
-      <form action="" className="w-64 mx-auto mb-12">
+      <form onSubmit={register} action="" className="w-64 mx-auto mb-12">
         <input
           type="text"
           placeholder="username"
