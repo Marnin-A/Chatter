@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { Register } from "./Register";
+import { RegisterAndLoginForm } from "./RegisterAndLoginForm";
 import { UserContext } from "./UserContext";
 
 export default function Routes() {
@@ -9,5 +9,5 @@ export default function Routes() {
   if (username) {
     return `Welcome ${username}`;
   }
-  return <Register />;
+  return <RegisterAndLoginForm />;
 }
