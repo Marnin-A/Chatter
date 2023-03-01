@@ -22,7 +22,7 @@ export const RegisterAndLoginForm = () => {
       <form onSubmit={handleSubmit} action="" className="w-64 mx-auto mb-12">
         <input
           type="text"
-          placeholder="username"
+          placeholder="Username"
           value={username}
           onChange={(e) => {
             setUsername(e.target.value);
@@ -31,7 +31,7 @@ export const RegisterAndLoginForm = () => {
         />
         <input
           type="password"
-          placeholder="password"
+          placeholder="Password"
           value={password}
           onChange={(e) => {
             setPassword(e.target.value);

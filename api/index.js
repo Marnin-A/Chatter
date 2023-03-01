@@ -6,6 +6,7 @@ const jwt = require("jsonwebtoken");
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
+const ws = require("ws");
 
 // Use dotenv to hide sensitive data
 dotenv.config();
@@ -74,7 +75,6 @@ app.post("/register", async (req, res) => {
       password: hashedPassword,
     });
     // Sign user in when registered
-    // prettier ignore
     jwt.sign(
       { userId: createdUser._id, username },
       jwtSecret,
@@ -94,4 +94,51 @@ app.post("/register", async (req, res) => {
     res.status(500).json("error");
   }
 });
-app.listen(4000);
+const server = app.listen(4000);
+
+// Define a Web Socket Server (wss)
+const wss = new ws.WebSocketServer({ server });
+wss.on("connection", (connection, req) => {
+  // Get the cookie from the header
+  const cookies = req.headers.cookie;
+  if (cookies) {
+    const tokenCookieString = cookies
+      .split(";")
+      .find((str) => str.startsWith("token="));
+    if (tokenCookieString) {
+      // Split the token and take the part after the equals to sign
+      const token = tokenCookieString.split("=")[1];
+      if (token) {
+        // Decrypt the token
+        jwt.verify(token, jwtSecret, {}, (err, userData) => {
+          if (err) throw err;
+          // Pass data to through the web socket connection
+          const { userId, username } = userData;
+          connection.userId = userId;
+          connection.username = username;
+        });
+      }
+    }
+  }
+  // Send details of who is online to each client
+  [...wss.clients].forEach((client) => {
+    client.send(
+      JSON.stringify({
+        online: [...wss.clients].map((c) => ({
+          userId: c.userId,
+          username: c.username,
+        })),
+      })
+    );
+  });
+  connection.on("message", (message, isBinary) => {
+    const messageData = JSON.parse(message.toString());
+    const { recipient, text } = messageData;
+    if (recipient && text) {
+      // Filter is used instead of find because find only searches
+      // for a single instance of a user, where as filter searches
+      // for all instances
+      [...wss.clients].filter((c) => c.userId === recipient);
+    }
+  });
+});
