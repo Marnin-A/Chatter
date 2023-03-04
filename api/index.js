@@ -1,3 +1,4 @@
+const Message = require("./models/Message.js");
 const cookieParser = require("cookie-parser");
 const User = require("./models/User.js");
 const mongoose = require("mongoose");
@@ -28,8 +29,36 @@ app.use(
     origin: process.env.CLIENT_URL,
   })
 );
+async function getUserDataFromRequest(req) {
+  return new Promise((resolve, reject) => {
+    // Get the token from the cookies
+    const token = req.cookies?.token;
+    // Verify the token and respond with the user's data
+    if (token) {
+      jwt.verify(token, jwtSecret, {}, (err, userData) => {
+        if (err) throw err;
+        resolve(userData);
+      });
+    } else {
+      reject("No token,you haven't logged in yet.");
+    }
+  });
+}
 app.get("/test", (req, res) => {
   res.json("test ok");
+});
+
+app.get("/messages/:userId", async (req, res) => {
+  const { userId } = req.params; //UserId of the other person
+  const userData = await getUserDataFromRequest(req);
+  const ourUserId = userData.userId; // Our userId
+  const messages = await Message.find({
+    sender: { $in: [userId, ourUserId] },
+    recipient: { $in: [userId, ourUserId] },
+  })
+    .sort({ createdAt: 1 })
+    .exec();
+  res.json(messages);
 });
 
 app.get("/profile", (req, res) => {
@@ -85,7 +114,7 @@ app.post("/register", async (req, res) => {
           .cookie("token", token, { sameSite: "none", secure: true })
           .status(201)
           .json({
-            id: createdUser._id,
+            _id: createdUser._id,
           });
       }
     );
@@ -120,6 +149,32 @@ wss.on("connection", (connection, req) => {
       }
     }
   }
+  connection.on("message", async (message) => {
+    const messageData = JSON.parse(message.toString());
+    const { recipient, text } = messageData;
+    if (recipient && text) {
+      const messageDoc = await Message.create({
+        sender: connection.userId,
+        recipient,
+        text,
+      });
+      // Filter is used instead of find because find only searches
+      // for a single instance of a user, where as filter searches
+      // for all instances
+      [...wss.clients]
+        .filter((c) => c.userId === recipient)
+        .forEach((c) =>
+          c.send(
+            JSON.stringify({
+              text,
+              sender: connection.userId,
+              recipient,
+              id: messageDoc._id,
+            })
+          )
+        );
+    }
+  });
   // Send details of who is online to each client
   [...wss.clients].forEach((client) => {
     client.send(
@@ -130,15 +185,5 @@ wss.on("connection", (connection, req) => {
         })),
       })
     );
-  });
-  connection.on("message", (message, isBinary) => {
-    const messageData = JSON.parse(message.toString());
-    const { recipient, text } = messageData;
-    if (recipient && text) {
-      // Filter is used instead of find because find only searches
-      // for a single instance of a user, where as filter searches
-      // for all instances
-      [...wss.clients].filter((c) => c.userId === recipient);
-    }
   });
 });

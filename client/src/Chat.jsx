@@ -1,19 +1,32 @@
-import { React, useEffect, useState, useContext } from "react";
+import { React, useEffect, useState, useContext, useRef } from "react";
 import { UserContext } from "./UserContext";
+import { uniqBy } from "lodash";
 import Avatar from "./Avatar.jsx";
 import Logo from "./Logo.jsx";
+import axios from "axios";
 
 export default function Chat() {
   const [ws, setWs] = useState(null);
   const [onlinePeople, setOnlinePeople] = useState({});
   const [selectUserId, setSelectUserId] = useState(null);
+  const [messages, setMessages] = useState([]);
   const [newMessageText, setNewMessageText] = useState("");
   const { username, id } = useContext(UserContext);
+  const divUnderMessage = useRef();
   useEffect(() => {
+    connectToWS();
+  }, []);
+  function connectToWS() {
     const ws = new WebSocket("ws://localhost:4000");
     setWs(ws);
     ws.addEventListener("message", handleMessage);
-  }, []);
+    ws.addEventListener("close", () => {
+      setTimeout(() => {
+        console.log("Trying to reconnect");
+        connectToWS();
+      }, 1000);
+    });
+  }
 
   function showOnlinePeople(peopleArray) {
     const people = {};
@@ -24,25 +37,54 @@ export default function Chat() {
   }
   function handleMessage(e) {
     const messageData = JSON.parse(e.data);
+    console.log(e, { messageData });
     if ("online" in messageData) {
       showOnlinePeople(messageData.online);
+    } else {
+      console.log({ messageData });
+      setMessages((prev) => [...prev, { ...messageData }]);
     }
   }
   function sendMessage(ev) {
     ev.preventDefault();
-    console.log("sending");
     ws.send(
       JSON.stringify({
-        message: {
-          recipient: selectUserId,
-          text: newMessageText,
-        },
+        recipient: selectUserId,
+        text: newMessageText,
       })
     );
+    setNewMessageText("");
+    setMessages((prev) => [
+      ...prev,
+      {
+        text: newMessageText,
+        sender: id,
+        recipient: selectUserId,
+        _id: Date.now(),
+      },
+    ]);
   }
+  // Scroll the last message into view
+  useEffect(() => {
+    const div = divUnderMessage.current;
+    if (div) {
+      div.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  }, [messages]);
+
+  // Get messages from DB
+  useEffect(() => {
+    if (selectUserId) {
+      axios.get("messages/" + selectUserId).then((res) => {
+        setMessages(res.data);
+      });
+    }
+  }, [selectUserId]);
 
   const onlinePeopleExclOurUser = { ...onlinePeople };
   delete onlinePeopleExclOurUser[id];
+
+  const messageWithNoDuplicates = uniqBy(messages, "_id");
   return (
     <div className="flex h-screen">
       <div className="bg-white w-1/3">
@@ -52,7 +94,6 @@ export default function Chat() {
             key={userId}
             onClick={() => {
               setSelectUserId(userId);
-              console.log(selectUserId);
             }}
             className={
               "border-b border-gray-100 gap-2 cursor-pointer flex items-center " +
@@ -65,7 +106,11 @@ export default function Chat() {
               ""
             )}
             <div className="p-2 gap-2 flex pl-2 items-center">
-              <Avatar username={onlinePeople[userId]} userId={userId} />
+              <Avatar
+                online={true}
+                username={onlinePeople[userId]}
+                userId={userId}
+              />
               <span className="font-semibold capitalize">
                 {onlinePeople[userId]}
               </span>
@@ -82,7 +127,38 @@ export default function Chat() {
               </div>
             </div>
           )}
+          {!!selectUserId && (
+            <div className="relative h-full">
+              <div className=" overflow-y-scroll absolute top-0 left-0 right-0 bottom-1">
+                {messageWithNoDuplicates.map((message) => (
+                  <div
+                    className={
+                      message.sender === id ? "text-right" : "text-left"
+                    }
+                  >
+                    <div
+                      key={messages._id}
+                      className={
+                        "inline-block p-2 m-2" +
+                        (message.sender === id
+                          ? " bg-blue-500 text-white rounded-md text-left"
+                          : " bg-slate-100 rounded-md ")
+                      }
+                    >
+                      Sender: {message.sender}
+                      <br />
+                      My ID: {id}
+                      <br />
+                      {message.text}
+                    </div>
+                  </div>
+                ))}
+                <div className="h-0.1" ref={divUnderMessage}></div>
+              </div>
+            </div>
+          )}
         </div>
+
         {/* The !! converts that the value to boolean, !! for true and ! for false*/}
         {!!selectUserId && (
           <form className="flex gap-2 m-2" onSubmit={sendMessage}>

@@ -48,6 +48,7 @@ export const RegisterAndLoginForm = () => {
             <div>
               Already have a Member?{" "}
               <button
+                className=" text-blue-500"
                 onClick={() => {
                   setIsLoggedInOrRegistered("login");
                 }}
@@ -64,7 +65,7 @@ export const RegisterAndLoginForm = () => {
                 onClick={() => {
                   setIsLoggedInOrRegistered("register");
                 }}
-                href=""
+                className=" text-blue-500"
               >
                 Register
               </button>
