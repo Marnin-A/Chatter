@@ -1,6 +1,6 @@
 import React from "react";
 
-export default function Avatar({ userId, username }) {
+export default function Avatar({ userId, username, online }) {
   const colors = [
     "bg-red-200",
     "bg-green-200",
@@ -18,11 +18,17 @@ export default function Avatar({ userId, username }) {
   return (
     <div
       className={
-        "w-8 h-8 rounded-full flex items-center justify-center capitalize font-semibold " +
+        "relative w-8 h-8 rounded-full flex items-center justify-center capitalize font-semibold " +
         colors[userIdToBase10]
       }
     >
       <span>{username[0]}</span>
+      <div
+        className={
+          "absolute w-2 h-2 bottom-0 left-0 border-white rounded-full " +
+          (online ? "bg-green-500" : "bg-gray-300")
+        }
+      ></div>
     </div>
   );
 }

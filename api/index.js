@@ -3,11 +3,13 @@ const cookieParser = require("cookie-parser");
 const User = require("./models/User.js");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const Buffer = require("buffer").Buffer;
 const jwt = require("jsonwebtoken");
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const ws = require("ws");
+const fs = require("fs");
 
 // Use dotenv to hide sensitive data
 dotenv.config();
@@ -29,6 +31,7 @@ app.use(
     origin: process.env.CLIENT_URL,
   })
 );
+app.use("/uploads", express.static(__dirname + "/uploads/"));
 async function getUserDataFromRequest(req) {
   return new Promise((resolve, reject) => {
     // Get the token from the cookies
@@ -93,6 +96,9 @@ app.post("/login", async (req, res) => {
     }
   }
 });
+app.post("/logout", (req, res) => {
+  res.cookie("token", { sameSite: "none", secure: true }).json("logged out");
+});
 
 app.post("/register", async (req, res) => {
   const { username, password } = req.body;
@@ -123,11 +129,38 @@ app.post("/register", async (req, res) => {
     res.status(500).json("error");
   }
 });
+
 const server = app.listen(4000);
 
 // Define a Web Socket Server (wss)
 const wss = new ws.WebSocketServer({ server });
 wss.on("connection", (connection, req) => {
+  function whoIsOnline() {
+    // Define function that sends details of who is online to each client
+    [...wss.clients].forEach((client) => {
+      client.send(
+        JSON.stringify({
+          online: [...wss.clients].map((c) => ({
+            userId: c.userId,
+            username: c.username,
+          })),
+        })
+      );
+    });
+  }
+
+  connection.isAlive = true;
+  connection.timer = setInterval(() => {
+    connection.ping();
+    connection.deathTimer = setTimeout(() => {
+      clearInterval(connection.timer);
+      connection.isAlive = false;
+      connection.terminate();
+    }, 1000);
+  }, 5000);
+  connection.on("pong", () => {
+    clearTimeout(connection.deathTimer);
+  });
   // Get the cookie from the header
   const cookies = req.headers.cookie;
   if (cookies) {
@@ -151,12 +184,25 @@ wss.on("connection", (connection, req) => {
   }
   connection.on("message", async (message) => {
     const messageData = JSON.parse(message.toString());
-    const { recipient, text } = messageData;
-    if (recipient && text) {
+    const { recipient, text, file } = messageData;
+    let fileName = null;
+    if (file) {
+      console.log("Size: ", file.data.length);
+      const fileParts = file.name.split(".");
+      const fileExten = fileParts[fileParts.length - 1];
+      fileName = Date.now() + "." + fileExten;
+      const path = __dirname + "/uploads/" + fileName;
+      const bufferData = new Buffer.from(file.data.split(",")[1], "base64");
+      fs.writeFile(path, bufferData, () => {
+        console.log("file saved:" + path);
+      });
+    }
+    if ((recipient && text) || file) {
       const messageDoc = await Message.create({
         sender: connection.userId,
         recipient,
         text,
+        file: fileName ? fileName : null,
       });
       // Filter is used instead of find because find only searches
       // for a single instance of a user, where as filter searches
@@ -169,21 +215,17 @@ wss.on("connection", (connection, req) => {
               text,
               sender: connection.userId,
               recipient,
+              file: file ? fileName : null,
               id: messageDoc._id,
             })
           )
         );
     }
   });
-  // Send details of who is online to each client
-  [...wss.clients].forEach((client) => {
-    client.send(
-      JSON.stringify({
-        online: [...wss.clients].map((c) => ({
-          userId: c.userId,
-          username: c.username,
-        })),
-      })
-    );
+  app.get("/people", async (req, res) => {
+    const users = await User.find({}, { _id: 1, username: 1 });
+    res.json(users);
   });
+  // Call function that sends details of who is online to each client
+  whoIsOnline();
 });
